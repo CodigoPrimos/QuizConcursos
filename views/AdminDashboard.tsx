@@ -45,6 +45,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPass, setNewUserPass] = useState('');
   const [newUserName, setNewUserName] = useState('');
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
 
   // Customization Form State
   const [editAppName, setEditAppName] = useState(appConfig.name);
@@ -105,6 +106,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const toggleUserStatus = (id: string) => {
     setUsers(prev => prev.map(u => u.id === id ? { ...u, isActive: !u.isActive } : u));
+  };
+
+  const handleDeleteUser = () => {
+    if (!userToDelete) return;
+    if (userToDelete.role === UserRole.ADMIN) {
+      alert("Este usuário não pode ser removido.");
+      setUserToDelete(null);
+      return;
+    }
+    setUsers(prev => prev.filter(u => u.id !== userToDelete.id));
+    setUserToDelete(null);
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -331,7 +343,44 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="md:col-span-2 bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
                 <table className="w-full text-left">
                   <thead className="bg-slate-50 text-slate-500 text-[10px] font-bold uppercase"><tr><th className="px-6 py-4">Usuário</th><th className="px-6 py-4">Status</th><th className="px-6 py-4">Ações</th></tr></thead>
-                  <tbody className="divide-y divide-slate-100">{users.map(u => (<tr key={u.id}><td className="px-6 py-4"><p className="font-bold text-slate-800">{u.username}</p><p className="text-xs text-slate-500">{u.email}</p></td><td className="px-6 py-4"><span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${u.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{u.isActive ? 'Ativo' : 'Inativo'}</span></td><td className="px-6 py-4">{u.role !== UserRole.ADMIN && (<button onClick={() => toggleUserStatus(u.id)} className={`text-xs font-bold ${u.isActive ? 'text-amber-600' : 'text-green-600'} hover:underline`}>{u.isActive ? 'Bloquear' : 'Desbloquear'}</button>)}</td></tr>))}</tbody>
+                  <tbody className="divide-y divide-slate-100">
+                    {users.map(u => (
+                      <tr key={u.id}>
+                        <td className="px-6 py-4">
+                          <p className="font-bold text-slate-800">{u.username}</p>
+                          <p className="text-xs text-slate-500">{u.email}</p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${u.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            {u.isActive ? 'Ativo' : 'Inativo'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-4">
+                            {u.role !== UserRole.ADMIN ? (
+                              <>
+                                <button 
+                                  onClick={() => toggleUserStatus(u.id)} 
+                                  className={`text-xs font-bold ${u.isActive ? 'text-amber-600' : 'text-green-600'} hover:underline`}
+                                >
+                                  {u.isActive ? 'Bloquear' : 'Desbloquear'}
+                                </button>
+                                <button 
+                                  onClick={() => setUserToDelete(u)}
+                                  className="text-slate-400 hover:text-red-600 transition-all p-1"
+                                  title="Apagar usuário"
+                                >
+                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                </button>
+                              </>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
                 </table>
               </div>
             </div>
@@ -447,7 +496,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           )}
 
-          {/* Other tabs follow the same logic as before */}
           {activeTab === 'comments' && (
             <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
                <div className="p-6 border-b border-slate-100"><h3 className="text-lg font-bold text-slate-900">Moderação</h3></div>
@@ -470,6 +518,41 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           )}
         </div>
       </div>
+
+      {/* MODAL DE CONFIRMAÇÃO DE APAGAR USUÁRIO */}
+      {userToDelete && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl space-y-6 animate-in zoom-in duration-300">
+            <div className="flex flex-col items-center text-center space-y-4">
+              <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center shadow-inner">
+                <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <h4 className="text-2xl font-bold text-slate-900">⚠️ Atenção</h4>
+              <p className="text-slate-500 leading-relaxed">
+                Esta ação irá apagar permanentemente o usuário <strong className="text-slate-800">{userToDelete.username}</strong> e o e-mail <strong className="text-slate-800">{userToDelete.email}</strong>.
+                <br /><br />
+                Deseja continuar?
+              </p>
+            </div>
+            <div className="flex gap-4 pt-4">
+              <button 
+                onClick={() => setUserToDelete(null)} 
+                className="flex-1 px-6 py-4 bg-slate-100 text-slate-700 font-bold rounded-2xl hover:bg-slate-200 transition-colors border border-slate-200"
+              >
+                ❌ Cancelar
+              </button>
+              <button 
+                onClick={handleDeleteUser} 
+                className="flex-1 px-6 py-4 bg-red-600 text-white font-bold rounded-2xl hover:bg-red-700 shadow-xl shadow-red-200 transition-all transform active:scale-95"
+              >
+                🗑️ Apagar usuário
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 };
