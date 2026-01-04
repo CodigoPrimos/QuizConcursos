@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { User, UserRole, Subject, Topic, Question, Comment, AuthState, AppConfig } from './types';
 import { INITIAL_SUBJECTS, INITIAL_TOPICS, INITIAL_QUESTIONS, APP_NAME } from './constants';
+import { getRemoteAppSettings } from './services/supabase';
 
 // Views
 import AuthPage from './views/AuthPage';
@@ -55,6 +56,17 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('qc_comments');
     return saved ? JSON.parse(saved) : [];
   });
+
+  // Efeito para carregar configurações do Supabase ao iniciar
+  useEffect(() => {
+    const loadRemoteConfig = async () => {
+      const remoteConfig = await getRemoteAppSettings();
+      if (remoteConfig) {
+        setAppConfig(remoteConfig);
+      }
+    };
+    loadRemoteConfig();
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('qc_auth', JSON.stringify(authState));
