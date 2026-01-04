@@ -1,0 +1,8 @@
+{
+  "name": "02 QuizConcursos",
+  "description": "Uma plataforma educacional premium para resolução de questões de concursos com controle administrativo total e feedback imediato.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
