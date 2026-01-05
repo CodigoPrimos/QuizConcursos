@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { User, UserRole, Subject, Topic, Question, Comment, AuthState, AppConfig } from './types';
 import { INITIAL_SUBJECTS, INITIAL_TOPICS, INITIAL_QUESTIONS, APP_NAME, DEFAULT_LOGO } from './constants';
-import { getRemoteAppSettings } from './services/supabase';
+import * as db from './services/supabase';
 
 // Views
 import AuthPage from './views/AuthPage';
@@ -12,71 +12,82 @@ import AdminDashboard from './views/AdminDashboard';
 import QuestionView from './views/QuestionView';
 
 const App: React.FC = () => {
+  const [isLoading, setIsLoading] = useState(true);
   const [authState, setAuthState] = useState<AuthState>(() => {
     const saved = localStorage.getItem('qc_auth');
     return saved ? JSON.parse(saved) : { user: null, isAuthenticated: false };
   });
 
-  const [appConfig, setAppConfig] = useState<AppConfig>(() => {
-    const saved = localStorage.getItem('qc_config');
-    // Default config with 5s activation time and the new QC logo
-    return saved ? JSON.parse(saved) : { name: APP_NAME, logoUrl: DEFAULT_LOGO, adminActivationTime: 5 };
+  const [appConfig, setAppConfig] = useState<AppConfig>({ 
+    name: APP_NAME, 
+    logoUrl: DEFAULT_LOGO, 
+    adminActivationTime: 5 
   });
 
-  const [users, setUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem('qc_users');
-    if (saved) return JSON.parse(saved);
-    return [{
-      id: 'admin1',
-      email: 'admin@quizconcurso.com',
-      username: 'Administrador Principal',
-      password: 'admin',
-      role: UserRole.ADMIN,
-      isActive: true,
-      createdAt: Date.now()
-    }];
-  });
+  const [users, setUsers] = useState<User[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [topics, setTopics] = useState<Topic[]>([]);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [comments, setComments] = useState<Comment[]>([]);
 
-  const [subjects, setSubjects] = useState<Subject[]>(() => {
-    const saved = localStorage.getItem('qc_subjects');
-    return saved ? JSON.parse(saved) : INITIAL_SUBJECTS;
-  });
-
-  const [topics, setTopics] = useState<Topic[]>(() => {
-    const saved = localStorage.getItem('qc_topics');
-    return saved ? JSON.parse(saved) : INITIAL_TOPICS;
-  });
-
-  const [questions, setQuestions] = useState<Question[]>(() => {
-    const saved = localStorage.getItem('qc_questions');
-    return saved ? JSON.parse(saved) : INITIAL_QUESTIONS;
-  });
-
-  const [comments, setComments] = useState<Comment[]>(() => {
-    const saved = localStorage.getItem('qc_comments');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  // Efeito para carregar configurações do Supabase ao iniciar
+  // Efeito para carregar TUDO do Supabase ao iniciar
   useEffect(() => {
-    const loadRemoteConfig = async () => {
-      const remoteConfig = await getRemoteAppSettings();
-      if (remoteConfig) {
-        setAppConfig(remoteConfig);
+    const syncWithCloud = async () => {
+      setIsLoading(true);
+      try {
+        const [
+          remoteConfig,
+          remoteUsers,
+          remoteSubjects,
+          remoteTopics,
+          remoteQuestions,
+          remoteComments
+        ] = await Promise.all([
+          db.getRemoteAppSettings(),
+          db.fetchUsers(),
+          db.fetchSubjects(),
+          db.fetchTopics(),
+          db.fetchQuestions(),
+          db.fetchComments()
+        ]);
+
+        if (remoteConfig) setAppConfig(remoteConfig);
+        
+        // Se houver dados no banco, usa eles. Se não, usa os iniciais e tenta salvar o admin padrão se necessário.
+        if (remoteUsers.length > 0) setUsers(remoteUsers);
+        else {
+          const defaultAdmin = {
+            id: 'admin1',
+            email: 'admin@quizconcurso.com',
+            username: 'Administrador Principal',
+            password: 'admin',
+            role: UserRole.ADMIN,
+            isActive: true,
+            createdAt: Date.now()
+          };
+          setUsers([defaultAdmin]);
+          db.upsertUser(defaultAdmin);
+        }
+
+        setSubjects(remoteSubjects.length > 0 ? remoteSubjects : INITIAL_SUBJECTS);
+        setTopics(remoteTopics.length > 0 ? remoteTopics : INITIAL_TOPICS);
+        setQuestions(remoteQuestions.length > 0 ? remoteQuestions : INITIAL_QUESTIONS);
+        setComments(remoteComments);
+
+      } catch (err) {
+        console.error("Erro na sincronização inicial:", err);
+      } finally {
+        setIsLoading(false);
       }
     };
-    loadRemoteConfig();
+
+    syncWithCloud();
   }, []);
 
+  // Persiste apenas a sessão de login no localStorage por segurança/conveniência
   useEffect(() => {
     localStorage.setItem('qc_auth', JSON.stringify(authState));
-    localStorage.setItem('qc_users', JSON.stringify(users));
-    localStorage.setItem('qc_subjects', JSON.stringify(subjects));
-    localStorage.setItem('qc_topics', JSON.stringify(topics));
-    localStorage.setItem('qc_questions', JSON.stringify(questions));
-    localStorage.setItem('qc_comments', JSON.stringify(comments));
-    localStorage.setItem('qc_config', JSON.stringify(appConfig));
-  }, [authState, users, subjects, topics, questions, comments, appConfig]);
+  }, [authState]);
 
   const login = (user: User) => {
     setAuthState({ user, isAuthenticated: true });
@@ -85,6 +96,15 @@ const App: React.FC = () => {
   const logout = () => {
     setAuthState({ user: null, isAuthenticated: false });
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+        <div className="w-16 h-16 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="text-slate-600 font-medium">Sincronizando QuizConcursos...</p>
+      </div>
+    );
+  }
 
   return (
     <HashRouter>
@@ -135,7 +155,14 @@ const App: React.FC = () => {
                 subjects={subjects}
                 topics={topics}
                 comments={comments}
-                setComments={setComments}
+                setComments={(updated: any) => {
+                  if (typeof updated === 'function') {
+                    const next = updated(comments);
+                    setComments(next);
+                  } else {
+                    setComments(updated);
+                  }
+                }}
                 appConfig={appConfig}
                 onLogout={logout}
               />
