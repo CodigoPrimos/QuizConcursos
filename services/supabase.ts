@@ -1,175 +1,82 @@
-
 import { createClient } from '@supabase/supabase-js';
-import { User, Subject, Topic, Question, Comment } from '../types';
 
 const SETTINGS_ID = 'b00656af-7387-4228-a4eb-feff86ca10bd';
 
-// Acesso às variáveis de ambiente via Vite
+/**
+ * Acesso seguro às variáveis de ambiente do Vite.
+ */
 const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
 
+/**
+ * Inicialização condicional para evitar erros fatais se as chaves estiverem ausentes.
+ */
 export const supabase = (supabaseUrl && supabaseAnonKey) 
   ? createClient(supabaseUrl, supabaseAnonKey) 
   : null;
 
-// --- CONFIGURAÇÕES DO APP ---
+/**
+ * Busca as configurações globais da tabela 'app_settings'.
+ */
 export const getRemoteAppSettings = async () => {
-  if (!supabase) return null;
-  const { data } = await supabase.from('app_settings').select('*').eq('id', SETTINGS_ID).single();
-  return data ? {
-    name: data.app_name,
-    logoUrl: data.logo_url,
-    adminActivationTime: data.admin_press_time
-  } : null;
+  try {
+    if (!supabase) return null;
+
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('app_name, logo_url, admin_press_time')
+      .eq('id', SETTINGS_ID)
+      .single();
+
+    if (error) {
+      console.warn('Supabase: Erro ao buscar configurações:', error.message);
+      return null;
+    }
+
+    if (data) {
+      return {
+        name: data.app_name,
+        logoUrl: data.logo_url,
+        adminActivationTime: data.admin_press_time
+      };
+    }
+    
+    return null;
+  } catch (err) {
+    console.error('Supabase: Erro inesperado no fetch:', err);
+    return null;
+  }
 };
 
+/**
+ * Atualiza as configurações no Supabase.
+ * Usa exclusivamente UPDATE com o ID fixo b00656af-7387-4228-a4eb-feff86ca10bd.
+ */
 export const updateRemoteAppSettings = async (config: { name: string; logoUrl: string | null; adminActivationTime: number }) => {
-  if (!supabase) return false;
-  const { error } = await supabase.from('app_settings').update({
-    app_name: config.name,
-    logo_url: config.logoUrl,
-    admin_press_time: config.adminActivationTime,
-    updated_at: new Date().toISOString()
-  }).eq('id', SETTINGS_ID);
-  return !error;
-};
+  try {
+    if (!supabase) {
+      console.error('Supabase: Cliente não inicializado.');
+      return false;
+    }
 
-// --- USUÁRIOS ---
-export const fetchUsers = async (): Promise<User[]> => {
-  if (!supabase) return [];
-  const { data } = await supabase.from('app_users').select('*');
-  return (data || []).map(u => ({
-    id: u.id,
-    email: u.email,
-    username: u.username,
-    password: u.password,
-    role: u.role,
-    isActive: u.is_active,
-    createdAt: u.created_at
-  }));
-};
+    const { error } = await supabase
+      .from('app_settings')
+      .update({
+        app_name: config.name,
+        logo_url: config.logoUrl,
+        admin_press_time: config.adminActivationTime,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', SETTINGS_ID);
 
-export const upsertUser = async (user: User) => {
-  if (!supabase) return;
-  await supabase.from('app_users').upsert({
-    id: user.id,
-    email: user.email,
-    username: user.username,
-    password: user.password,
-    role: user.role,
-    is_active: user.isActive,
-    created_at: user.createdAt
-  });
-};
+    if (error) {
+      console.error('Supabase: Erro ao atualizar registro:', error.message);
+      return false;
+    }
 
-export const deleteRemoteUser = async (id: string) => {
-  if (!supabase) return;
-  await supabase.from('app_users').delete().eq('id', id);
-};
-
-// --- TAXONOMIA (DISCIPLINAS E TÓPICOS) ---
-export const fetchSubjects = async (): Promise<Subject[]> => {
-  if (!supabase) return [];
-  const { data } = await supabase.from('subjects').select('*');
-  return data || [];
-};
-
-export const upsertSubject = async (sub: Subject) => {
-  if (!supabase) return;
-  await supabase.from('subjects').upsert(sub);
-};
-
-export const deleteRemoteSubject = async (id: string) => {
-  if (!supabase) return;
-  await supabase.from('subjects').delete().eq('id', id);
-};
-
-export const fetchTopics = async (): Promise<Topic[]> => {
-  if (!supabase) return [];
-  const { data } = await supabase.from('topics').select('*');
-  return (data || []).map(t => ({ id: t.id, subjectId: t.subject_id, name: t.name }));
-};
-
-export const upsertTopic = async (topic: Topic) => {
-  if (!supabase) return;
-  await supabase.from('topics').upsert({ id: topic.id, subject_id: topic.subjectId, name: topic.name });
-};
-
-export const deleteRemoteTopic = async (id: string) => {
-  if (!supabase) return;
-  await supabase.from('topics').delete().eq('id', id);
-};
-
-// --- QUESTÕES ---
-export const fetchQuestions = async (): Promise<Question[]> => {
-  if (!supabase) return [];
-  const { data } = await supabase.from('questions').select('*');
-  return (data || []).map(q => ({
-    id: q.id,
-    subjectId: q.subject_id,
-    topicId: q.topic_id,
-    type: q.type,
-    origin: q.origin,
-    statement: q.statement,
-    options: q.options,
-    correctAnswer: q.correct_answer,
-    explanation: q.explanation,
-    commentsEnabled: q.comments_enabled,
-    createdAt: q.created_at
-  }));
-};
-
-export const upsertQuestion = async (q: Question) => {
-  if (!supabase) return;
-  await supabase.from('questions').upsert({
-    id: q.id,
-    subject_id: q.subjectId,
-    topic_id: q.topicId,
-    type: q.type,
-    origin: q.origin,
-    statement: q.statement,
-    options: q.options,
-    correct_answer: q.correctAnswer,
-    explanation: q.explanation,
-    comments_enabled: q.commentsEnabled,
-    created_at: q.createdAt
-  });
-};
-
-export const deleteRemoteQuestion = async (id: string) => {
-  if (!supabase) return;
-  await supabase.from('questions').delete().eq('id', id);
-};
-
-// --- COMENTÁRIOS ---
-export const fetchComments = async (): Promise<Comment[]> => {
-  if (!supabase) return [];
-  const { data } = await supabase.from('comments').select('*');
-  return (data || []).map(c => ({
-    id: c.id,
-    questionId: c.question_id,
-    userId: c.user_id,
-    username: c.username,
-    content: c.content,
-    isBlocked: c.is_blocked,
-    createdAt: c.created_at
-  }));
-};
-
-export const upsertComment = async (c: Comment) => {
-  if (!supabase) return;
-  await supabase.from('comments').upsert({
-    id: c.id,
-    question_id: c.questionId,
-    user_id: c.userId,
-    username: c.username,
-    content: c.content,
-    is_blocked: c.isBlocked,
-    created_at: c.createdAt
-  });
-};
-
-export const deleteRemoteComment = async (id: string) => {
-  if (!supabase) return;
-  await supabase.from('comments').delete().eq('id', id);
+    return true;
+  } catch (err) {
+    console.error('Supabase: Erro inesperado no update:', err);
+    return false;
+  }
 };
